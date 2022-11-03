@@ -1,15 +1,16 @@
 import os
-from unicodedata import category
 from flask import Flask, request, abort, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS, cross_origin
 import random
 import sys
-from sqlalchemy import asc, desc
+from sqlalchemy import desc
 
 from models import setup_db, Question, Category
 
 QUESTIONS_PER_PAGE = 10
+
+# implement pagination
 
 
 def paginate_questions(request, selection):
@@ -28,8 +29,8 @@ def create_app(test_config=None):
     app = Flask(__name__)
     setup_db(app)
     # Allows '*' for origins
-    # CORS(app)
-    resources = ({r"*/api/*": {"origins": "*"}})
+    CORS(app)
+    # resources = ({r"*/api/*": {"origins": "*"}})
 
     @app.after_request
     def after_request(response):
@@ -95,6 +96,7 @@ def create_app(test_config=None):
                 Category.id == question.id).first()
         # formatted_categories = {category.type for category in categories}
 
+        # response body object
         return jsonify({
             'success': True,
             'questions': list_of_questions,
@@ -115,17 +117,19 @@ def create_app(test_config=None):
     @app.route('/questions/<int:question_id>', methods=['DELETE'])
     def delete_question(question_id):
         try:
+            # get specific question to be deleted
             question = Question.query.get(question_id)
 
+            # if question id does not exist, abort
             if question is None:
                 abort(404)
 
+            # delete specified question by id
             question.delete()
-            question = Question.query.order_by(Question.id).all()
 
+            # response body object
             return jsonify({
-                'success': True,
-                'deleted': question_id,
+                'success': True
             })
         except:
             abort(422)
@@ -164,13 +168,16 @@ def create_app(test_config=None):
 
         try:
             if search_term:
-
+                # if search_term is empty string, return all questions
                 if search_term == "":
                     selection = Question.query.order_by(Question.id).all()
+
+                # else, return question that matches search_term
                 else:
                     selection = Question.query.order_by(Question.id).filter(
                         Question.question.ilike('%{}%'.format(search_term))).all()
 
+                # paginate result
                 current_question = paginate_questions(request, selection)
 
                 if search_term is None:
@@ -186,12 +193,15 @@ def create_app(test_config=None):
                 if question == '' or answer == '' or category == '' or difficulty == '':
                     abort(422)
 
+                # new question body
                 question = Question(
                     question=question,
                     answer=answer,
                     category=category,
                     difficulty=difficulty
                 )
+
+                # add new question
                 question.insert()
 
                 return jsonify({
@@ -201,8 +211,8 @@ def create_app(test_config=None):
         except Exception as e:
 
             question.rollback()
-            print(sys.exc_info())
-            abort(422)
+            # print(sys.exc_info())
+            # abort(422)
 
     """
     @TODO:
@@ -215,18 +225,24 @@ def create_app(test_config=None):
 
     @app.route('/categories/<int:category_id>/questions')
     def get_questions_by_category(category_id):
-
+        # This endpoint returns a question based on Category
         try:
+
+            # returns specific category
             category = Category.query.filter(
                 Category.id == category_id).one_or_none()
 
             if category is None:
                 abort(404)
 
-            selection = Question.query.filter(
+            # returns question based on specific cateogory
+            specific_selection = Question.query.filter(
                 Question.category == category_id).all()
-            questions = paginate_questions(request, selection)
 
+            # paginate result
+            questions = paginate_questions(request, specific_selection)
+
+            # response body object
             return jsonify({
                 "success": True,
                 "questions": questions,
@@ -251,36 +267,41 @@ def create_app(test_config=None):
     @app.route('/quizzes', methods=['POST'])
     def quizzes():
 
+        # try:
+        # initialize quiz question
+        quiz_question = None
+
+        # get the body, previous question and category from the request
+        body = request.get_json()
+        previous_questions = body.get('previous_questions')
+        quiz_category = body.get('quiz_category')
+        category_id = quiz_category['id']
+
+        # check previous question and category
+        if ((previous_questions == 0) or (quiz_category == 0)):
+            abort(400)
         try:
-            body = request.get_json()
-            quiz_category = body.get('quiz_category')
-            previous_questions = body.get('previous_questions')
-            category_id = quiz_category['id']
+            # if no specific category is selected, return all questions
+            if (category_id == 0):
+                quiz_question = Question.query.all()
 
-            print(category_id)
-
-            # if 'ALL' category is selected
-            if category_id == 0:
-                questions = Question.query.order_by(desc(Question.id)).all()
-
-            # if a particular category is selected
+            # else filter by category
             else:
-                questions = Question.query.filter(Question.id.notin_(previous_questions),
-                                                  Question.category == category_id).all()
+                quiz_question = Question.query.filter_by(
+                    category=category_id).all()
 
-            # if len(questions) == 0:
-            #     abort(404)
+                # randomize quiz selction using randrange() method
+                random_quiz_question = quiz_question[random.randrange(
+                    0, len(quiz_question), 1)]
 
-            question = None
-            if (questions):
-                question = random.choice(questions)
-
+            # response body object
             return jsonify({
-                'success': True,
-                'question': question.format()
+                'sucecss': True,
+                'question': random_quiz_question.format()
             })
-        except:
-            abort(422)
+
+        except Exception as e:
+            print(e)
 
     """
     @TODO:
